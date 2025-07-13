@@ -1,0 +1,106 @@
+/* Base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Font smoothing */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:root {
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: #111827; /* bg-gray-900 */
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  min-width: 320px;
+}
+
+/* テトリスブロックの色 */
+.cell-I { background-color: #00F0F0; } /* bg-tetris-cyan */
+.cell-J { background-color: #0000F0; } /* bg-tetris-blue */
+.cell-L { background-color: #F0A000; } /* bg-tetris-orange */
+.cell-O { background-color: #F0F000; } /* bg-tetris-yellow */
+.cell-S { background-color: #00F000; } /* bg-tetris-green */
+.cell-T { background-color: #A000F0; } /* bg-tetris-purple */
+.cell-Z { background-color: #F00000; } /* bg-tetris-red */
+.cell-ghost {
+  opacity: 0.3;
+}
+
+/* ボタンのベーススタイル */
+button {
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+/* プライマリボタン */
+.btn-primary {
+  background-color: #00F0F0; /* bg-tetris-cyan */
+  color: #213547;
+}
+
+.btn-primary:hover {
+  background-color: #00F0F0; /* hover:bg-tetris-cyan/90 */
+}
+
+/* セカンダリボタン */
+.btn-secondary {
+  background-color: #1F2937; /* bg-gray-800 */
+  color: white;
+}
+
+.btn-secondary:hover {
+  background-color: #374151; /* hover:bg-gray-700 */
+}
+
+/* ゲームボードのセル */
+.cell {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid #374151; /* border-gray-700 */
+  box-sizing: border-box;
+}
+
+/* レスポンシブデザイン */
+/* Responsive design */
+@media (min-width: 640px) {
+  .cell {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}

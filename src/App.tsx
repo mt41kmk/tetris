@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // レイジーローディングでコンポーネントをインポート
 const StartScreen = lazy(() => import('./pages/Start'));
@@ -16,14 +17,19 @@ const Loading = () => (
 
 function App() {
   return (
-    <Router>
+    <Router basename="/tetris3">
       <div className="min-h-screen bg-gray-900 text-white">
         <Toaster position="top-center" />
         <Suspense fallback={<Loading />}>
           <Routes>
             <Route path="/" element={<StartScreen />} />
-            <Route path="/game" element={<GameScreen />} />
+            <Route path="/game" element={
+              <ErrorBoundary>
+                <GameScreen />
+              </ErrorBoundary>
+            } />
             <Route path="/result" element={<ResultScreen />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </div>

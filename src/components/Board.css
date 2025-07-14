@@ -1,0 +1,36 @@
+:root {
+  --cell-size: 28px;
+}
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background-color: #1F2937;
+  border: 3px solid #4B5563;
+  border-radius: 4px;
+  margin: 0 auto;
+  width: fit-content;
+}
+
+.board-row {
+  display: flex;
+  gap: 1px;
+  height: var(--cell-size);
+}
+
+.cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  aspect-ratio: 1 / 1;
+  box-sizing: border-box;
+}
+
+.cell.empty {
+  background-color: #1F2937;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cell.filled {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}

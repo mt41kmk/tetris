@@ -1,4 +1,7 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+
+// スコア計算用の定数
+const LINE_POINTS = [0, 40, 100, 300, 1200];
 
 // テトロミノの種類
 type TetrominoType = 'I' | 'J' | 'L' | 'O' | 'S' | 'T' | 'Z';
@@ -33,7 +36,7 @@ interface Tetromino {
   type: TetrominoType;
   position: Position;
   shape: number[][];
-  color?: string;
+  color: string;
 }
 
 // ゲームの状態
@@ -143,32 +146,40 @@ const deepCopyShape = (shape: number[][]): number[][] => {
   return shape.map(row => [...row]);
 };
 
+// ボードのディープコピーを作成するヘルパー関数
+const deepCopyBoard = (board: CellType[][]): CellType[][] => {
+  return board.map(row => [...row]);
+};
+
 const useTetris = () => {
   const [gameState, setGameState] = useState<GameState>(initialState);
   const gameLoopRef = useRef<number | null>(null);
   const lastUpdateTime = useRef<number>(0);
   const dropCounter = useRef<number>(0);
+  const requestRef = useRef<number>();
+  const previousTimeRef = useRef<number>();
 
-  // 衝突判定
+  // 衝突判定（最適化版）
   const checkCollision = useCallback((position: Position, shape: TetrominoShape, board: CellType[][]) => {
+    const { x: posX, y: posY } = position;
+    const boardHeight = board.length;
+    const boardWidth = board[0]?.length || 0;
+    
     for (let y = 0; y < shape.length; y++) {
       for (let x = 0; x < shape[y].length; x++) {
-        // テトロミノのセルが空でない場合のみチェック
+        // 空でないセルのみチェック
         if (shape[y][x] !== 0) {
-          const newX = position.x + x;
-          const newY = position.y + y;
+          const newX = posX + x;
+          const newY = posY + y;
           
-          // ボードの左端、右端、下端を超えているかチェック
-          if (newX < 0 || newX >= 10 || newY >= 20) {
+          // ボードの境界チェック
+          if (newX < 0 || newX >= boardWidth || newY >= boardHeight) {
             return true;
           }
           
-          // ボードの上端より上は無視（テトロミノが完全にボードの上にある場合）
-          if (newY >= 0) {
-            // すでにブロックがある場合は衝突（0 または undefined でない場合）
-            if (board[newY] && board[newY][newX] !== 0) {
-              return true;
-            }
+          // ボード内かつ既存のブロックとの衝突チェック
+          if (newY >= 0 && board[newY]?.[newX] !== 0) {
+            return true;
           }
         }
       }
@@ -194,64 +205,39 @@ const useTetris = () => {
     return newPiece;
   }, [checkCollision]);
 
-  // ボードを更新（現在のピースを含む表示用ボードを生成）
-  // この関数は displayBoard に統合されたため削除
-  // 古いコードは削除します
-
   // ラインをクリア
   const clearLines = useCallback((board: CellType[][]): { board: CellType[][], linesCleared: number } => {
-    const newBoard = [...board];
-    let linesCleared = 0;
-    const emptyRow = Array(10).fill(0) as CellType[];
-    const rowsToKeep: CellType[][] = [];
-
-    // 下から上に走査して、消去する行を特定
-    for (let y = newBoard.length - 1; y >= 0; y--) {
-      // 行が全て埋まっているかチェック
-      if (newBoard[y].every(cell => cell !== 0)) {
-        linesCleared++;
-      } else {
-        // 消去されない行は保持
-        rowsToKeep.unshift([...newBoard[y]]);
-      }
-    }
-
-    // 消去された行の数だけ空の行を追加
-    const clearedBoard = [
-      ...Array(linesCleared).fill(emptyRow),
-      ...rowsToKeep
-    ];
-
-    return { 
-      board: clearedBoard.slice(0, 20), // 念のため20行に制限
-      linesCleared 
-    };
+    const newBoard = board.map(row => [...row]);
+    const linesToClear = board.reduce<number[]>((acc, row, y) => {
+      if (row.every(cell => cell !== 0)) acc.push(y);
+      return acc;
+    }, []);
+    
+    if (!linesToClear.length) return { board: newBoard, linesCleared: 0 };
+    
+    // 消去する行を削除し、先頭に空行を追加
+    linesToClear
+      .sort((a, b) => b - a)
+      .forEach(lineIndex => newBoard.splice(lineIndex, 1));
+    
+    // 消去した行の数だけ空行を先頭に追加
+    newBoard.unshift(...Array(linesToClear.length).fill(0).map(() => Array(10).fill(0) as CellType[]));
+    
+    // ボードのサイズを20行に調整
+    while (newBoard.length > 20) newBoard.pop();
+    
+    return { board: newBoard, linesCleared: linesToClear.length };
   }, []);
 
   // ゲームの状態を更新
   const updateGameState = useCallback((updates: Partial<GameState>) => {
-    setGameState(prev => {
-      // スコア計算が必要な場合
-      if (updates.lines !== undefined) {
-        const linesCleared = updates.lines - prev.lines;
-        const linePoints = [0, 40, 100, 300, 1200];
-        const scoreAddition = linesCleared > 0 ? linePoints[Math.min(linesCleared, 4)] * prev.level : 0;
-        const newLevel = Math.floor(updates.lines / 10) + 1;
-        
-        return {
-          ...prev,
-          ...updates,
-          score: prev.score + scoreAddition,
-          level: newLevel
-        };
-      }
-      
-      // 通常の状態更新
-      return {
-        ...prev,
-        ...updates
-      };
-    });
+    setGameState(prev => ({
+      ...prev,
+      ...updates,
+      ...(updates.lines !== undefined && { 
+        level: Math.max(1, Math.floor(updates.lines / 10) + 1) 
+      })
+    }));
   }, []);
 
   // テトロミノを移動
@@ -285,7 +271,7 @@ const useTetris = () => {
       // 下方向への移動で衝突した場合、ピースを固定
       if (deltaY > 0) {
         // 現在のボードのディープコピーを作成
-        const newBoard = board.map(row => [...row]);
+        const newBoard = deepCopyBoard(board);
         
         // 現在のピースをボードに固定
         for (let y = 0; y < currentPiece.shape.length; y++) {
@@ -294,7 +280,7 @@ const useTetris = () => {
               const boardY = currentPiece.position.y + y;
               const boardX = currentPiece.position.x + x;
               
-              // ボードの範囲内かチェック
+              // ボードの範囲内かチェック（念のため）
               if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
                 // テトロミノのタイプを保存
                 newBoard[boardY][boardX] = currentPiece.type;
@@ -306,37 +292,39 @@ const useTetris = () => {
         // ラインをクリア
         const { board: updatedBoard, linesCleared } = clearLines(newBoard);
         const newLines = lines + linesCleared;
-        const newLevel = Math.floor(newLines / 10) + 1;
-        const linePoints = [0, 40, 100, 300, 1200];
-        const newScore = score + (linePoints[Math.min(linesCleared, 4)] * level);
+        
+        // スコア計算（レベルは自動的に更新される）
+        const scoreAddition = linesCleared > 0 ? LINE_POINTS[Math.min(linesCleared, 4)] * level : 0;
         
         // 次のピースを生成
         const newNextPiece = randomTetromino();
-        const newCurrentPiece = spawnNewPiece(updatedBoard, nextPiece);
         
-        // 新しいボードとピースを設定
-        const newState: GameState = {
+        // 現在のボード状態で新しいピースを配置可能か確認
+        let newCurrentPiece = spawnNewPiece(updatedBoard, nextPiece);
+        let isGameOver = false;
+        
+        // 新しいピースが配置できない場合（ゲームオーバー）
+        if (!newCurrentPiece) {
+          isGameOver = true;
+          // ゲームオーバー時は現在のピースをクリア
+          newCurrentPiece = null;
+        }
+        
+        // 新しい状態を作成（直接返す）
+        // 10ラインごとにレベルが1上がる（10-19: レベル2, 20-29: レベル3, ...）
+        const newLevel = Math.floor(newLines / 10) + 1;
+        
+        return {
           ...prevState,
           board: updatedBoard,
           currentPiece: newCurrentPiece,
           nextPiece: newNextPiece,
-          score: newScore,
-          level: newLevel,
+          score: prevState.score + scoreAddition,
           lines: newLines,
-          isGameOver: newCurrentPiece === null,
+          level: newLevel,
+          isGameOver: isGameOver,
+          isPaused: prevState.isPaused
         };
-        
-        return {
-          ...prevState,
-          board: newState.board,
-          currentPiece: newState.currentPiece,
-          nextPiece: newState.nextPiece || prevState.nextPiece,
-          score: newState.score,
-          level: newState.level,
-          lines: newState.lines,
-          isGameOver: newState.isGameOver,
-          isPaused: newState.isPaused
-        } as GameState;
       }
 
       return { ...prevState };
@@ -368,7 +356,11 @@ const useTetris = () => {
     const updatedState: GameState = {
       ...newState,
       currentPiece: initialPiece,
-      isGameOver: initialPiece === null
+      isGameOver: initialPiece === null,
+      level: 1,
+      lines: 0,
+      score: 0,
+      isPaused: false
     };
     
     setGameState(updatedState);
@@ -397,28 +389,79 @@ const useTetris = () => {
   const hardDrop = useCallback((): void => {
     if (gameState.isGameOver || gameState.isPaused || !gameState.currentPiece) return;
 
-    let dropDistance = 0;
-    while (!checkCollision(
-      { ...gameState.currentPiece.position, y: gameState.currentPiece.position.y + dropDistance + 1 },
-      gameState.currentPiece.shape,
-      gameState.board
-    )) {
-      dropDistance++;
-    }
+    setGameState(prev => {
+      if (!prev.currentPiece) return prev;
+      
+      let dropDistance = 0;
+      while (!checkCollision(
+        { ...prev.currentPiece!.position, y: prev.currentPiece!.position.y + dropDistance + 1 },
+        prev.currentPiece.shape,
+        prev.board
+      )) {
+        dropDistance++;
+      }
 
-    if (dropDistance > 0) {
-      updateGameState({
-        currentPiece: {
-          ...gameState.currentPiece,
-          position: {
-            ...gameState.currentPiece.position,
-            y: gameState.currentPiece.position.y + dropDistance,
-          },
-        },
-      });
-      // すぐに固定するために下方向に1マス移動を実行
-      movePiece(0, 1);
-    }
+      if (dropDistance > 0) {
+        const newPosition = {
+          ...prev.currentPiece.position,
+          y: prev.currentPiece.position.y + dropDistance,
+        };
+        
+        // ピースを移動
+        const newPiece = {
+          ...prev.currentPiece,
+          position: newPosition,
+        };
+        
+        // ボードにピースを配置
+        const newBoard = deepCopyBoard(prev.board);
+        
+        // 現在のピースをボードに固定
+        for (let y = 0; y < newPiece.shape.length; y++) {
+          for (let x = 0; x < newPiece.shape[y].length; x++) {
+            if (newPiece.shape[y][x] !== 0) {
+              const boardY = newPiece.position.y + y;
+              const boardX = newPiece.position.x + x;
+              
+              if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
+                newBoard[boardY][boardX] = newPiece.type;
+              }
+            }
+          }
+        }
+        
+        // ラインをクリア
+        const { board: updatedBoard, linesCleared } = clearLines(newBoard);
+        const newLines = prev.lines + linesCleared;
+        const scoreAddition = linesCleared > 0 ? LINE_POINTS[Math.min(linesCleared, 4)] * prev.level : 0;
+        
+        // 次のピースを生成
+        const newNextPiece = randomTetromino();
+        let newCurrentPiece = spawnNewPiece(updatedBoard, prev.nextPiece);
+        let isGameOver = false;
+        
+        if (!newCurrentPiece) {
+          isGameOver = true;
+          newCurrentPiece = null;
+        }
+        
+        // 10ラインごとにレベルが1上がる（10-19: レベル2, 20-29: レベル3, ...）
+        const newLevel = Math.floor(newLines / 10) + 1;
+        
+        return {
+          ...prev,
+          board: updatedBoard,
+          currentPiece: newCurrentPiece,
+          nextPiece: newNextPiece,
+          score: prev.score + scoreAddition,
+          lines: newLines,
+          level: newLevel,
+          isGameOver
+        };
+      }
+      
+      return prev;
+    });
   }, [checkCollision, gameState, movePiece, updateGameState]);
 
   // ピースを回転
@@ -432,8 +475,6 @@ const useTetris = () => {
 
     // 壁蹴り処理（左右の壁にめり込まないように調整）
     const originalPosition = { ...gameState.currentPiece.position };
-    const pieceWidth = newShape[0].length;
-    const pieceHeight = newShape.length;
     
     // 回転後の位置調整を試行
     const testOffsets = [0, 1, -1, 2, -2]; // 中央、右、左、さらに右、さらに左の順に試行
@@ -481,140 +522,68 @@ const useTetris = () => {
     }
   }, [checkCollision, gameState, updateGameState]);
 
-  // ゲームループ
-  const gameLoop = useCallback((time: number) => {
-    if (!lastUpdateTime.current) {
-      lastUpdateTime.current = time;
-    }
-
-    if (gameState.isGameOver || gameState.isPaused) {
-      lastUpdateTime.current = time;
-      gameLoopRef.current = requestAnimationFrame(gameLoop);
-      return;
-    }
-
-    const deltaTime = time - lastUpdateTime.current;
-    lastUpdateTime.current = time;
-
-    // 自動落下（1秒ごとに1マス）
-    dropCounter.current += deltaTime;
-    const dropInterval = getDropTime();
-    
-    if (dropCounter.current > dropInterval) {
+  // 重力による自動落下を処理する関数
+  const applyGravity = useCallback(() => {
+    if (!gameState.isGameOver && !gameState.isPaused) {
       movePiece(0, 1);
-      dropCounter.current = 0;
     }
+  }, [gameState.isGameOver, gameState.isPaused, movePiece]);
 
-    gameLoopRef.current = requestAnimationFrame(gameLoop);
-  }, [gameState.isGameOver, gameState.isPaused, getDropTime, movePiece]);
-
-  // ゲームの初期化とクリーンアップ
+  // ゲームループ - 重力を適用
   useEffect(() => {
-    // 既存のゲームループをクリア
-    if (gameLoopRef.current) {
-      cancelAnimationFrame(gameLoopRef.current);
-      gameLoopRef.current = null;
-    }
-
-    // ゲームをリセット
-    resetGame();
-
-    // キーボードイベントハンドラ
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (gameState.isGameOver) return;
-
-      switch (e.key) {
-        case 'ArrowLeft':
-          e.preventDefault();
-          movePiece(-1, 0);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          movePiece(1, 0);
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          movePiece(0, 1);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          rotatePiece();
-          break;
-        case ' ':
-          e.preventDefault();
-          hardDrop();
-          break;
-        case 'p':
-        case 'P':
-          e.preventDefault();
-          togglePause();
-          break;
+    const gameLoop = (time: number) => {
+      if (!previousTimeRef.current) {
+        previousTimeRef.current = time;
       }
-    };
 
-    window.addEventListener('keydown', handleKeyDown);
+      const deltaTime = time - previousTimeRef.current;
+      previousTimeRef.current = time;
+      
+      if (!gameState.isGameOver && !gameState.isPaused) {
+        dropCounter.current += deltaTime;
+        const dropSpeed = Math.max(100, 1000 - (gameState.level - 1) * 100);
 
-    // ゲームループを開始
-    gameLoopRef.current = requestAnimationFrame(gameLoop);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      if (gameLoopRef.current) {
-        cancelAnimationFrame(gameLoopRef.current);
-        gameLoopRef.current = null;
-      }
-    };
-  }, [gameLoop]); // gameLoopのみを依存関係に指定
-
-  // 現在のボードの状態を計算（現在のピースを含む）
-  const displayBoard = useCallback((): CellType[][] => {
-    // ボードのディープコピーを作成（新しい配列として完全にコピー）
-    const currentBoard = gameState.board.map(row => [...row]);
-    
-    // 現在のピースがなければボードをそのまま返す
-    if (!gameState.currentPiece) {
-      return currentBoard;
-    }
-    
-    const { position, shape, type } = gameState.currentPiece;
-    
-    // 現在のピースをボードに描画
-    for (let y = 0; y < shape.length; y++) {
-      for (let x = 0; x < shape[y].length; x++) {
-        // テトロミノのセルが空でない場合のみ描画
-        if (shape[y][x] !== 0) {
-          const boardY = position.y + y;
-          const boardX = position.x + x;
-          
-          // ボードの範囲内にある場合のみ描画
-          if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
-            // 現在のピースを描画（既存のブロックは上書きしない）
-            currentBoard[boardY][boardX] = type;
-          }
+        if (dropCounter.current > dropSpeed) {
+          dropCounter.current = 0;
+          applyGravity();
         }
       }
-    }
-    
-    return currentBoard;
-  }, [gameState.board, gameState.currentPiece]);
 
-// ゲームの状態と関数を返す
-const result = {
-  displayBoard,
-  score: gameState.score,
-  level: gameState.level,
-  lines: gameState.lines,
-  isGameOver: gameState.isGameOver,
-  isPaused: gameState.isPaused,
-  nextPiece: gameState.nextPiece,
-  movePiece,
-  rotatePiece,
-  hardDrop,
-  togglePause,
-  resetGame,
-} as const;
+      requestRef.current = requestAnimationFrame(gameLoop);
+    };
 
-return result;
+    requestRef.current = requestAnimationFrame(gameLoop);
+    return () => {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
+    };
+  }, [gameState.level, gameState.isGameOver, gameState.isPaused, applyGravity]);
+
+  // ボードを描画用に準備（メモ化）
+  const displayBoard = useCallback(() => {
+    // 現在のボードの状態を直接返す（コンポーネント側で現在のピースを描画する）
+    return gameState.board;
+  }, [gameState.board]);
+
+  // ゲームの状態と関数を返す
+  return {
+    displayBoard,
+    board: gameState.board,
+    currentPiece: gameState.currentPiece,
+    nextPiece: gameState.nextPiece,
+    score: gameState.score,
+    level: gameState.level,
+    lines: gameState.lines,
+    isGameOver: gameState.isGameOver,
+    isPaused: gameState.isPaused,
+    movePiece,
+    rotatePiece,
+    hardDrop,
+    togglePause,
+    resetGame,
+  } as const;
+
 };
 
 export default useTetris;

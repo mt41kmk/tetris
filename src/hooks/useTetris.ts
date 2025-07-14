@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-// スコア計算用の定数
-const LINE_POINTS = [0, 40, 100, 300, 1200];
+import { BOARD_HEIGHT, BOARD_WIDTH, LINE_POINTS } from '../constants/tetris';
 
 // テトロミノの種類
 type TetrominoType = 'I' | 'J' | 'L' | 'O' | 'S' | 'T' | 'Z';
@@ -113,7 +111,7 @@ const TETROMINOS: Record<TetrominoType, TetrominoTemplate> = {
 
 // 空のボードを生成する関数
 const createEmptyBoard = (): CellType[][] => {
-  return Array(20).fill(0).map((): CellType[] => Array(10).fill(0));
+  return Array(BOARD_HEIGHT).fill(0).map(() => Array(BOARD_WIDTH).fill(0));
 };
 
 // ランダムなテトロミノを取得
@@ -156,8 +154,8 @@ const useTetris = () => {
   const gameLoopRef = useRef<number | null>(null);
   const lastUpdateTime = useRef<number>(0);
   const dropCounter = useRef<number>(0);
-  const requestRef = useRef<number>();
-  const previousTimeRef = useRef<number>();
+  const requestRef = useRef<number | null>(null);
+  const previousTimeRef = useRef<number>(0);
 
   // 衝突判定（最適化版）
   const checkCollision = useCallback((position: Position, shape: TetrominoShape, board: CellType[][]) => {
@@ -221,10 +219,10 @@ const useTetris = () => {
       .forEach(lineIndex => newBoard.splice(lineIndex, 1));
     
     // 消去した行の数だけ空行を先頭に追加
-    newBoard.unshift(...Array(linesToClear.length).fill(0).map(() => Array(10).fill(0) as CellType[]));
+    newBoard.unshift(...Array(linesToClear.length).fill(0).map(() => Array(BOARD_WIDTH).fill(0) as CellType[]));
     
-    // ボードのサイズを20行に調整
-    while (newBoard.length > 20) newBoard.pop();
+    // ボードのサイズをBOARD_HEIGHT行に調整
+    while (newBoard.length > BOARD_HEIGHT) newBoard.pop();
     
     return { board: newBoard, linesCleared: linesToClear.length };
   }, []);
@@ -248,7 +246,7 @@ const useTetris = () => {
         return { ...prevState };
       }
 
-      const { currentPiece, board, score, level, lines, nextPiece } = prevState;
+      const { currentPiece, board, level, lines, nextPiece } = prevState;
       if (!currentPiece) return { ...prevState };
       const newPosition = {
         x: currentPiece.position.x + deltaX,
@@ -281,7 +279,7 @@ const useTetris = () => {
               const boardX = currentPiece.position.x + x;
               
               // ボードの範囲内かチェック（念のため）
-              if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
+              if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
                 // テトロミノのタイプを保存
                 newBoard[boardY][boardX] = currentPiece.type;
               }
@@ -333,11 +331,6 @@ const useTetris = () => {
     return true;
   }, [checkCollision, clearLines, spawnNewPiece]);
 
-  // 落下速度を計算（レベルに応じて速くなる）
-  const getDropTime = useCallback(() => {
-    // 基本速度を1000ms（1秒）に設定し、レベルが上がるごとに100msずつ減少（最低100ms）
-    return Math.max(1000 - (gameState.level - 1) * 100, 100);
-  }, [gameState.level]);
 
   // ゲームをリセット
   const resetGame = useCallback((): void => {
@@ -423,7 +416,7 @@ const useTetris = () => {
               const boardY = newPiece.position.y + y;
               const boardX = newPiece.position.x + x;
               
-              if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
+              if (boardY >= 0 && boardY < BOARD_HEIGHT && boardX >= 0 && boardX < BOARD_WIDTH) {
                 newBoard[boardY][boardX] = newPiece.type;
               }
             }
